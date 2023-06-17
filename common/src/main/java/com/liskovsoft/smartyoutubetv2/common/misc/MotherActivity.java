@@ -1,0 +1,310 @@
+package com.liskovsoft.smartyoutubetv2.common.misc;
+
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.os.Bundle;
+import android.util.DisplayMetrics;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.FragmentActivity;
+import com.liskovsoft.sharedutils.helpers.Helpers;
+import com.liskovsoft.sharedutils.helpers.KeyHelpers;
+import com.liskovsoft.sharedutils.locale.LocaleContextWrapper;
+import com.liskovsoft.sharedutils.locale.LocaleUpdater;
+import com.liskovsoft.sharedutils.mylogger.Log;
+import com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter;
+import com.liskovsoft.smartyoutubetv2.common.prefs.MainUIData;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class MotherActivity extends FragmentActivity {
+    private static final String TAG = MotherActivity.class.getSimpleName();
+    private static final float DEFAULT_DENSITY = 2.0f; // xhdpi
+    private static final float DEFAULT_WIDTH = 1920f; // xhdpi
+    private static DisplayMetrics sCachedDisplayMetrics;
+    protected static boolean sIsInPipMode;
+    private ScreensaverManager mScreensaverManager;
+    private List<OnPermissions> mOnPermissions;
+    private List<OnResult> mOnResults;
+
+    public interface OnPermissions {
+        void onPermissions(int requestCode, String[] permissions, int[] grantResults);
+    }
+
+    public interface OnResult {
+        void onResult(int requestCode, int resultCode, Intent data);
+    }
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        // Fixing: Only fullscreen opaque activities can request orientation (api 26)
+        // NOTE: You should remove 'screenOrientation' from the manifest.
+        // NOTE: Possible side effect: initDpi() won't work: "When you setRequestedOrientation() the view may be restarted"
+        //if (VERSION.SDK_INT != 26) {
+        //    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        //}
+        super.onCreate(savedInstanceState);
+
+        Log.d(TAG, "Starting %s...", this.getClass().getSimpleName());
+
+        initDpi();
+        initTheme();
+
+        mScreensaverManager = new ScreensaverManager(this);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            mScreensaverManager.enable();
+        }
+
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            mScreensaverManager.enable();
+        }
+
+        return super.dispatchTouchEvent(event);
+    }
+
+    @SuppressLint("RestrictedApi")
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            boolean isKeepScreenOff = mScreensaverManager.isScreenOff() && Helpers.equalsAny(event.getKeyCode(),
+                    new int[]{KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN});
+            if (!isKeepScreenOff) {
+                mScreensaverManager.enable();
+            }
+        }
+
+        try {
+            return super.dispatchKeyEvent(event);
+        } catch (IllegalStateException | SecurityException e) {
+            // Fatal Exception: java.lang.IllegalStateException
+            // android.permission.RECORD_AUDIO required for search (Android 5 mostly)
+            // Fatal Exception: java.lang.SecurityException
+            // Not allowed to bind to service Intent { act=android.speech.RecognitionService cmp=com.xgimi.duertts/com.baidu.duer.services.tvser
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_STOP) { // shortcut for closing PIP
+            PlaybackPresenter.instance(this).forceFinish();
+            return true;
+        }
+
+        boolean result = super.onKeyDown(keyCode, event);
+
+        // Fix buggy G20s menu key (focus lost on key press)
+        return KeyHelpers.isMenuKey(keyCode) || result;
+    }
+
+    public void finishReally() {
+        try {
+            super.finish();
+        } catch (Exception e) {
+            // TextView not attached to window manager (IllegalArgumentException)
+        }
+    }
+
+    @Override
+    protected void attachBaseContext(Context newBase) {
+        Context contextWrapper = LocaleContextWrapper.wrap(newBase, LocaleUpdater.getSavedLocale(newBase));
+
+        super.attachBaseContext(contextWrapper);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        // 4K fix with AFR
+        applyCustomConfig();
+        // Most of the fullscreen tweaks could be performed in styles but not all.
+        // E.g. Hide bottom navigation bar (couldn't be done in styles).
+        Helpers.makeActivityFullscreen(this);
+
+        // Called on player's next track. Reason unknown.
+        mScreensaverManager.enable();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        // Called on player's next track. Reason unknown.
+        mScreensaverManager.disable();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        applyCustomConfig();
+    }
+
+    public ScreensaverManager getScreensaverManager() {
+        return mScreensaverManager;
+    }
+
+    protected void initTheme() {
+        int rootThemeResId = MainUIData.instance(this).getColorScheme().browseThemeResId;
+        if (rootThemeResId > 0) {
+            setTheme(rootThemeResId);
+        }
+    }
+
+    private void initDpi() {
+        getResources().getDisplayMetrics().setTo(getDisplayMetrics());
+    }
+
+    //private DisplayMetrics getDisplayMetrics() {
+    //    DisplayMetrics displayMetrics = new DisplayMetrics();
+    //    getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+    //
+    //    // To adapt to resolution change (e.g. on AFR) check old width.
+    //    if (sCachedDisplayMetrics == null || sCachedDisplayMetrics.widthPixels != displayMetrics.widthPixels) {
+    //        float uiScale = MainUIData.instance(this).getUIScale();
+    //        float widthRatio = DEFAULT_WIDTH / displayMetrics.widthPixels;
+    //        float density = DEFAULT_DENSITY / widthRatio * uiScale;
+    //        displayMetrics.density = density;
+    //        displayMetrics.scaledDensity = density;
+    //        sCachedDisplayMetrics = displayMetrics;
+    //    }
+    //
+    //    return sCachedDisplayMetrics;
+    //}
+
+    private DisplayMetrics getDisplayMetrics() {
+        // BUG: adapt to resolution change (e.g. on AFR)
+        // Don't disable caching or you will experience weird sizes on cards in video suggestions (e.g. after exit from PIP)!
+        if (sCachedDisplayMetrics == null) {
+            DisplayMetrics displayMetrics = new DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+            float uiScale = MainUIData.instance(this).getUIScale();
+            // Take into the account screen orientation (e.g. when running on phone)
+            int widthPixels = Math.max(displayMetrics.widthPixels, displayMetrics.heightPixels);
+            float widthRatio = DEFAULT_WIDTH / widthPixels;
+            float density = DEFAULT_DENSITY / widthRatio * uiScale;
+            displayMetrics.density = density;
+            displayMetrics.scaledDensity = density;
+            sCachedDisplayMetrics = displayMetrics;
+        }
+
+        return sCachedDisplayMetrics;
+    }
+
+    private void applyCustomConfig() {
+        // NOTE: dpi should come after locale update to prevent resources overriding.
+
+        // Fix sudden language change.
+        // Could happen when screen goes off or after PIP mode.
+        LocaleUpdater.applySavedLocale(this);
+
+        // Fix sudden dpi change.
+        // Could happen when screen goes off or after PIP mode.
+        initDpi();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (mOnPermissions != null) {
+            for (OnPermissions callback : mOnPermissions) {
+                callback.onPermissions(requestCode, permissions, grantResults);
+            }
+            mOnPermissions.clear();
+            mOnPermissions = null;
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (mOnResults != null) {
+            for (OnResult callback : mOnResults) {
+                callback.onResult(requestCode, resultCode, data);
+            }
+            mOnResults.clear();
+            mOnResults = null;
+        }
+    }
+
+    /**
+     * NOTE: When enabled, you could face IllegalStateException: Can not perform this action after onSaveInstanceState<br/>
+     * https://stackoverflow.com/questions/7469082/getting-exception-illegalstateexception-can-not-perform-this-action-after-onsa<br/>
+     * https://stackoverflow.com/questions/7575921/illegalstateexception-can-not-perform-this-action-after-onsaveinstancestate-wit?page=1&tab=scoredesc#tab-top
+     */
+    //@Override
+    //protected void onSaveInstanceState(@NonNull Bundle outState) {
+    //    // No call for super(). Bug on API Level > 11.
+    //    //if (Utils.checkActivity(this)) {
+    //    //    super.onSaveInstanceState(outState);
+    //    //}
+    //
+    //    // Workaround is to override onSaveInstanceState and add something to the bundle prior to calling the super
+    //    // https://stackoverflow.com/questions/7469082/getting-exception-illegalstateexception-can-not-perform-this-action-after-onsa
+    //    outState.putString("WORKAROUND_FOR_BUG_19917_KEY", "WORKAROUND_FOR_BUG_19917_VALUE");
+    //    super.onSaveInstanceState(outState);
+    //}
+
+    /**
+     * Fatal Exception: java.lang.IllegalStateException <br/>
+     * Can not perform this action after onSaveInstanceState <br/>
+     * <a href="https://issuetracker.google.com/issues/37094575#comment28">More info</a>
+     */
+    //@Override
+    //protected void onSaveInstanceState(@NonNull Bundle outState) {
+    //    super.onSaveInstanceState(outState);
+    //
+    //    // Bug on Android 4, 5, 6
+    //    if (Build.VERSION.SDK_INT >= 19 && Build.VERSION.SDK_INT <= 23) {
+    //        final View rootView = findViewById(android.R.id.content);
+    //        if (rootView != null) {
+    //            rootView.cancelPendingInputEvents();
+    //        }
+    //    }
+    //}
+
+    public void addOnPermissions(OnPermissions onPermissions) {
+        if (mOnPermissions == null) {
+            mOnPermissions = new ArrayList<>();
+        }
+
+        mOnPermissions.remove(onPermissions);
+        mOnPermissions.add(onPermissions);
+    }
+
+    public void addOnResult(OnResult onResult) {
+        if (mOnResults == null) {
+            mOnResults = new ArrayList<>();
+        }
+
+        mOnResults.remove(onResult);
+        mOnResults.add(onResult);
+    }
+
+    /**
+     * Use this method only upon exiting from the app.<br/>
+     * Big troubles with AFR resolution switch!
+     */
+    public static void invalidate() {
+        sCachedDisplayMetrics = null;
+        sIsInPipMode = false;
+    }
+}
