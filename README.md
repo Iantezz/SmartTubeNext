@@ -159,14 +159,9 @@ To enable global voice search, an additional app must be installed alongside Sma
 If you want to support my developments you are welcome to buy me a cup of coffee :)
 
 > [**Patreon (Visa, Mastercard, PayPal)**](https://www.patreon.com/smarttube)  
-> **PayPal**: firsth<!-- abc@def -->ash@gmai<!-- @abc.com -->l.com  
+> **PayPal**: muthama<!-- abc@def -->ian87@gmai<!-- @abc.com -->l.com  
 <!-- > [**Buy me a coffee**](https://www.buymeacoffee.com/stube) --> 
-> **BTC**: 1JAT5VVWarVBkpVbNDn8UA8HXNdrukuBSx  
-> **LTC**: ltc1qgc24eq9jl9cq78qnd5jpqhemkajg9vudwyd8pw  
-> **ETH**: 0xe455E21a085ae195a097cd4F456051A9916A5064  
-> **ETC**: 0x209eCd33Fa61fA92167595eB3Aea92EE1905c815  
-> **XMR**: 48QsMjqfkeW54vkgKyRnjodtYxdmLk6HXfTWPSZoaFPEDpoHDwFUciGCe1QC9VAeGrgGw4PKNAksX9RW7myFqYJQDN5cHGT  
-
+> **BINANCE**: primeiantez@gmail.com
 
 ## Support
 
